@@ -514,8 +514,19 @@ def build_plan(
     plan: List[Tuple[Path, Path, str]] = []
     cutoff = datetime.now() - timedelta(days=days_to_archive)
 
+    excluded_roots = {
+        (organize_into / "Archive").resolve(),
+        (organize_into / "Duplicates").resolve(),
+        (root / JOURNAL_DIRNAME).resolve(),
+    }
+    excluded_roots.update((organize_into / category).resolve() for category in categories)
+
+    def is_excluded(path: Path) -> bool:
+        resolved = path.resolve()
+        return any(resolved == excluded or excluded in resolved.parents for excluded in excluded_roots)
+
     it = root.rglob("*") if include_subfolders else root.glob("*")
-    files = [p for p in it if p.is_file() and JOURNAL_DIRNAME not in p.parts]
+    files = [p for p in it if p.is_file() and not is_excluded(p)]
 
     total = len(files)
     show_progress = total >= 2000  # only show for big scans
@@ -524,10 +535,13 @@ def build_plan(
         if show_progress and (idx % 50 == 0 or idx == total):
             progress_print(idx, total, "Scanning")
 
-        cat = categorize(p, categories)
-        if owner_mode and p.name.lower() in {".ds_store", "thumbs.db", ".localized"}:
-            cat = "System"
-        mtime = datetime.fromtimestamp(p.stat().st_mtime)
+        try:
+            cat = categorize(p, categories)
+            if owner_mode and p.name.lower() in {".ds_store", "thumbs.db", ".localized"}:
+                cat = "System"
+            mtime = datetime.fromtimestamp(p.stat().st_mtime)
+        except OSError:
+            continue
 
         if mtime < cutoff:
             dst_dir = organize_into / "Archive" / f"{mtime.year:04d}" / f"{mtime.month:02d}" / cat
@@ -536,7 +550,6 @@ def build_plan(
             dst_dir = organize_into / cat
             reason = f"categorized_as_{cat}"
 
-        ensure_dir(dst_dir)
         dst = safe_unique_path(dst_dir / p.name)
 
         if p.resolve() == dst.resolve():
