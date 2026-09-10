@@ -1,0 +1,38 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+
+# =========================
+# Virtual environments
+# =========================
+.venv/
+venv/
+
+# =========================
+# PyInstaller
+# =========================
+build/
+dist/
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Secrets / licensing (DO NOT COMMIT)
+# =========================
+fileops_private.pem
+fileops.license
+*.license
+fileops_license.json
+*.license.json
+FILEOPS_LICENSE_JSON
+
+# =========================
+# Optional local files
+# =========================
+.env
