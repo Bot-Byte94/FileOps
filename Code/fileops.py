@@ -589,15 +589,18 @@ def read_journal(journal_path: Path) -> List[Action]:
 @app.command()
 def organize(
     ctx: typer.Context,
-    path: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),
-    organize_into: Optional[Path] = typer.Option(None, help="Destination root. Default: Desktop."),
+    path: Path = typer.Argument(Path.home() / "Downloads", exists=True, file_okay=False, dir_okay=True),
+    organize_into: Optional[Path] = typer.Option(None, help="Destination root. Default: Desktop/Change_Notes."),
     days_to_archive: int = typer.Option(60, help="Files older than this go to Archive/YYYY/MM/<Category>."),
     include_subfolders: bool = typer.Option(False, help="Scan recursively."),
     dry_run: bool = typer.Option(False, help="Preview only; do not move files."),
 ):
     """Run a smarter local organization pass using owner-mode defaults."""
     root = path.expanduser().resolve()
-    dest_root = (organize_into or (Path.home() / "Desktop")).expanduser().resolve()
+    downloads_root = (Path.home() / "Downloads").resolve()
+    if root != downloads_root:
+        raise typer.BadParameter("organize only accepts ~/Downloads", param_hint="path")
+    dest_root = (organize_into or (Path.home() / "Desktop" / "Change_Notes")).expanduser().resolve()
     effective_owner_mode = True
 
     plan = build_plan(root, dest_root, days_to_archive, DEFAULT_CATEGORIES, include_subfolders, effective_owner_mode)

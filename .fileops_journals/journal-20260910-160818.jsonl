@@ -1,0 +1,2 @@
+{"kind": "move", "src": "/Users/connerh/Downloads/fileops-0.3.6/.DS_Store", "dst": "/Users/connerh/Downloads/fileops-0.3.6/System/.DS_Store (2)", "reason": "categorized_as_System", "ts": "2026-09-10T16:08:18"}
+{"kind": "move", "src": "/Users/connerh/Downloads/fileops-0.3.6/fileops.py", "dst": "/Users/connerh/Downloads/fileops-0.3.6/Code/fileops (2).py", "reason": "categorized_as_Code", "ts": "2026-09-10T16:08:18"}
