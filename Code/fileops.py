@@ -28,7 +28,7 @@ from cryptography.hazmat.backends import default_backend
 FILEOPS_PUBLIC_KEY_PEM = b""
 
 APP_NAME = "FileOps"
-APP_VERSION = "0.3.4"
+APP_VERSION = "0.3.6"
 
 # =========================
 # Machine ID (privacy-preserving)
