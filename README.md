@@ -1,26 +1,34 @@
-# FileOps unified workspace
+# FileOps
 
-This repository now preserves two related Python applications:
+FileOps 0.3.6 is a free, offline, preview-first file organizer and duplicate finder for Windows, macOS, and Linux. No license key, account, or subscription is required.
 
-- `Code/fileops.py`: FileOps 0.3.6 with machine-bound license verification.
-- `original-reconfile/fileops.py`: ReconFile 0.3.5 with preview-first file organization, duplicate detection, and undo.
-- `original-reconfile/tests/`: original test suite.
-- `.github/workflows/validate-cross-platform.yml`: tests and builds the original ReconFile implementation on Windows, macOS, and Linux.
+## Run from source
 
-## Run the original ReconFile CLI
-
-```bash
-cd original-reconfile
+```sh
 python -m pip install -r requirements.txt
-python fileops.py --help
+python fileops.py
 ```
 
-See `original-reconfile/README.md` for usage.
+Running with no arguments opens the guided interactive wizard. Use `python fileops.py --help` for CLI commands.
 
-## Release status
+## Test and build
 
-This is a source consolidation, **not yet a fully integrated single application**. Workflow artifacts are for validation and are not automatically published as GitHub Releases. The newer FileOps code has an empty embedded license verification public key and cannot verify signed licenses as configured.
+```sh
+python -m pip install -r requirements-dev.txt
+python -m pytest -q tests
+python -m PyInstaller --noconfirm fileops.spec
+```
 
-The original `original-reconfile/LICENSE.md` prohibits redistribution without permission. Confirm redistribution rights before publishing binaries or source in a new distribution. Also review the committed `.fileops_journals/` data for sensitive paths before promoting the repository.
+GitHub Actions builds and tests on all three operating systems. Download build artifacts from the Actions run after checks pass. These are not yet public GitHub Release assets.
 
-Do not delete either original repository until the unified application is tested and approved.
+## Previous implementations
+
+- `original-reconfile/` preserves the original ReconFile 0.3.5 source and documentation.
+- `Code/` and `Archive/` contain legacy FileOps 0.3.6 premium/license-key implementations and archived materials; they are **not** the supported executable and are **not** included in the new builds.
+- The supported entry point is now the root `fileops.py`.
+
+Do not commit private keys, licenses, personal journals, or other user data. This software moves files: preview before applying changes and keep backups.
+
+## License
+
+The original ReconFile license remains in `original-reconfile/LICENSE.md`. As the rights holder, update distribution terms explicitly before republishing or redistributing this project.
