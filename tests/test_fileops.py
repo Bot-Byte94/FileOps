@@ -74,3 +74,37 @@ def test_manifest_protects_managed_directory(tmp_path):
 def test_loose_game_artwork_without_dependency_evidence_is_eligible(tmp_path):
     (tmp_path / "sprite.png").write_text("personal artwork")
     assert [p.name for p in fileops.safe_candidates(tmp_path)] == ["sprite.png"]
+
+def test_undo_restores_safe_document(tmp_path):
+    (tmp_path / "vacation.png").write_text("test")
+    plan = fileops.build_plan(tmp_path, tmp_path, 100000, fileops.DEFAULT_CATEGORIES, False)
+    actions = fileops.execute_plan(plan)
+    journal = fileops.write_journal(tmp_path, actions)
+    assert (tmp_path / "Images" / "vacation.png").exists()
+    result = runner.invoke(fileops.app, ["undo", str(journal), "--yes"])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "vacation.png").exists()
+    assert not (tmp_path / "Images" / "vacation.png").exists()
+
+def test_undo_refuses_existing_original(tmp_path):
+    (tmp_path / "vacation.png").write_text("original")
+    actions = fileops.execute_plan(fileops.build_plan(tmp_path, tmp_path, 100000, fileops.DEFAULT_CATEGORIES, False))
+    journal = fileops.write_journal(tmp_path, actions)
+    (tmp_path / "vacation.png").write_text("new data")
+    result = runner.invoke(fileops.app, ["undo", str(journal), "--yes"])
+    assert result.exit_code == 0
+    assert (tmp_path / "vacation.png").read_text() == "new data"
+    assert (tmp_path / "Images" / "vacation.png").exists()
+
+def test_undo_refuses_outside_journal_path(tmp_path):
+    outside = tmp_path.parent / (tmp_path.name + "-external.png")
+    outside.write_text("external")
+    journal_dir = tmp_path / fileops.JOURNAL_DIRNAME
+    journal_dir.mkdir()
+    journal = journal_dir / "journal-test.jsonl"
+    import json
+    journal.write_text(json.dumps({"kind":"move", "src":str(tmp_path / "vacation.png"), "dst":str(outside), "reason":"test", "ts":"2026-01-01"})+"\n")
+    result = runner.invoke(fileops.app, ["undo", str(journal), "--yes"])
+    assert result.exit_code == 0
+    assert outside.read_text() == "external"
+    assert not (tmp_path / "vacation.png").exists()
