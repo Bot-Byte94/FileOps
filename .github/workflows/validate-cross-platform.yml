@@ -1,0 +1,35 @@
+name: Validate ReconFile on Windows, macOS and Linux
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: original-reconfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Test
+        run: python -m pytest -q
+      - name: Build executable
+        run: python -m PyInstaller --noconfirm fileops.spec
+      - name: Package
+        run: python .github/scripts/package_release.py
+      - name: Upload validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReconFile-${{ matrix.os }}
+          path: original-reconfile/release/*
+          if-no-files-found: error
