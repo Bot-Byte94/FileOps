@@ -933,37 +933,90 @@ def dupes(
 @app.command()
 def undo(
     journal: Path = typer.Argument(..., exists=True, file_okay=True, dir_okay=False),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm safe restore without prompting."),
 ):
-    """
-    Undo an apply/dupes --move run using its journal file.
-    """
-    journal = journal.expanduser().resolve()
-    actions = read_journal(journal)
-    move_actions = [a for a in actions if a.kind == "move" and a.dst]
-    typer.echo("Safe Mode: undo is disabled until protected-path validation is implemented.")
-    raise typer.Exit(code=2)
+    """Restore only validated Safe Mode moves; never overwrite existing files."""
+    journal = journal.expanduser()
+    if journal.is_symlink():
+        typer.secho("Refusing symlinked journal.", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+    journal = journal.resolve()
+    if journal.parent.name != JOURNAL_DIRNAME:
+        typer.secho("Journal must be inside the selected folder's .fileops_journals directory.", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+    root = journal.parent.parent
+    if root.is_symlink():
+        raise typer.Exit(code=2)
+    try:
+        actions = read_journal(journal)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        typer.secho(f"Invalid journal: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+    if not actions:
+        typer.echo("Journal contains no actions.")
+        return
 
+    approved = []
+    skipped = []
+    related = application_related_files(root)
+    for a in reversed(actions):
+        if a.kind != "move" or not a.dst:
+            skipped.append((a, "not a reversible move"))
+            continue
+        source = Path(a.src)
+        moved = Path(a.dst)
+        # No path outside this folder, even if a journal has been edited.
+        try:
+            if not source.is_absolute() or not moved.is_absolute():
+                raise ValueError("relative path")
+            if source.parent.resolve() != root:
+                raise ValueError("original file not directly inside root")
+            rel = moved.relative_to(root)
+            if len(rel.parts) < 2 or rel.parts[0] not in set(DEFAULT_CATEGORIES) | {"Archive"}:
+                raise ValueError("destination outside expected managed folders")
+            if any(part == ".." for part in rel.parts):
+                raise ValueError("parent traversal")
+            if moved.is_symlink() or not moved.is_file() or moved.resolve() != moved.absolute():
+                raise ValueError("moved file missing or linked")
+            if source.exists() or source.is_symlink():
+                raise ValueError("original path already occupied")
+            if source.name.casefold() in related:
+                raise ValueError("application-related file")
+            if source.suffix.lower() not in SAFE_EXTENSIONS:
+                raise ValueError("file type not eligible for Safe Mode")
+            if any(part.lower() in PROTECTED_DIR_NAMES for part in source.parts):
+                raise ValueError("protected folder")
+            if any(root == folder or folder in root.parents or source == folder or folder in source.parents
+                   for folder in protected_folders()):
+                raise ValueError("custom protected folder")
+            # Only restore to the recorded original filename.
+            if source.name != moved.name:
+                raise ValueError("filename changed")
+            approved.append((moved, source))
+        except (OSError, ValueError, RuntimeError) as exc:
+            skipped.append((a, str(exc)))
+
+    typer.echo(f"Safe restore: {len(approved)} eligible; {len(skipped)} skipped.")
+    for moved, source in approved[:20]:
+        typer.echo(f"- RESTORE {moved} -> {source}")
+    for a, reason in skipped[:20]:
+        typer.echo(f"- SKIP {a.src}: {reason}")
+    if not approved:
+        return
     if not yes:
-        typer.echo(f"About to reverse {len(move_actions)} move(s) recorded in {journal.name}")
-        typer.confirm("Proceed?", abort=True)
-
-    undone = 0
-    skipped = 0
-    for a in reversed(move_actions):
-        src_now = Path(a.dst)
-        dst_back = Path(a.src)
-        if src_now.exists():
-            ensure_dir(dst_back.parent)
-            dst_back = safe_unique_path(dst_back)
-            shutil.move(str(src_now), str(dst_back))
-            undone += 1
-        else:
-            skipped += 1
-
-    typer.echo(f"Undid {undone} moves from {journal.name}")
-    if skipped:
-        typer.echo(f"Skipped {skipped} move(s) whose file was no longer at its recorded location.")
+        typer.confirm("Restore eligible files? (Review the list first)", default=False, abort=True)
+    restored = 0
+    for moved, source in approved:
+        # Re-check right before moving; never overwrite a newer file.
+        if moved.is_symlink() or not moved.is_file() or source.exists() or source.is_symlink():
+            typer.echo(f"Skipped changed path: {source}")
+            continue
+        try:
+            shutil.move(str(moved), str(source))
+            restored += 1
+        except OSError as exc:
+            typer.echo(f"Skipped {source}: {exc}")
+    typer.echo(f"Restored {restored} file(s). Journal retained for audit.")
 
 
 if __name__ == "__main__":
