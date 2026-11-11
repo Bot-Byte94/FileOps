@@ -53,7 +53,7 @@ def test_scan_has_no_side_effects(tmp_path):
 
 def test_custom_protected_folder(tmp_path, monkeypatch):
     config = tmp_path / "protected.txt"
-    config.write_text(str(tmp_path) + "\\n")
+    config.write_text(str(tmp_path) + "\n")
     monkeypatch.setattr(fileops, "PROTECTED_CONFIG", config)
     (tmp_path / "note.txt").write_text("hello")
     assert fileops.safe_candidates(tmp_path) == []
