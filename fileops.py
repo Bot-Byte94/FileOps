@@ -81,6 +81,78 @@ RESERVED_CATEGORY_NAMES = {"archive", "duplicates", "other"}
 
 JOURNAL_DIRNAME = ".fileops_journals"
 
+# Conservative Safe Mode: only standalone files directly inside the chosen folder.
+# Subdirectories, links, installers, mods, archives, unknown types and game data
+# are never eligible for moves. This is not a dependency detector.
+SAFE_EXTENSIONS = frozenset({
+    ".pdf", ".txt", ".md", ".rtf", ".csv",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp",
+})
+PROTECTED_EXTENSIONS = frozenset({
+    ".exe", ".msi", ".msix", ".msp", ".dmg", ".pkg", ".appimage",
+    ".deb", ".rpm", ".apk", ".jar", ".pak", ".esp", ".esm", ".esl",
+    ".ba2", ".bsa", ".mod", ".mcpack", ".mcaddon", ".mrpack",
+    ".zip", ".rar", ".7z", ".tar", ".gz", ".iso", ".vpk", ".wad",
+    ".dll", ".so", ".dylib", ".bat", ".cmd", ".ps1", ".sh",
+})
+PROTECTED_DIR_NAMES = frozenset({
+    "steam", "steamapps", "steam library", "steamlibrary", "curseforge",
+    "minecraft", ".minecraft", "mods", "modpacks", "instances",
+    "profiles", "mod organizer 2", "modorganizer", "vortex",
+    "nexus mods", "staging", "games", "game installs", "installers",
+    "downloads\\games", "program files", "program files (x86)",
+})
+PROTECTED_CONFIG = Path.home() / ".fileops-protected-folders.txt"
+
+
+def protected_folders() -> List[Path]:
+    """One absolute protected directory per line, '#' comments permitted."""
+    if not PROTECTED_CONFIG.exists():
+        return []
+    try:
+        lines = PROTECTED_CONFIG.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    folders = []
+    for line in lines:
+        item = line.strip()
+        if item and not item.startswith("#"):
+            p = Path(item).expanduser()
+            if p.is_absolute():
+                folders.append(p.resolve())
+    return folders
+
+
+def is_protected(path: Path, root: Path) -> bool:
+    """Fail closed for nested files, links, protected paths and non-allowlisted types."""
+    if path.is_symlink() or root.is_symlink():
+        return True
+    try:
+        base = root.resolve(strict=True)
+        target = path.resolve(strict=True)
+        relative = target.relative_to(base)
+    except (OSError, ValueError, RuntimeError):
+        return True
+    if len(relative.parts) != 1:
+        return True
+    if any(part.lower() in PROTECTED_DIR_NAMES for part in path.parts):
+        return True
+    if path.suffix.lower() in PROTECTED_EXTENSIONS:
+        return True
+    if path.suffix.lower() not in SAFE_EXTENSIONS:
+        return True
+    for folder in protected_folders():
+        if target == folder or folder in target.parents or base == folder or folder in base.parents:
+            return True
+    return False
+
+
+def safe_candidates(root: Path) -> List[Path]:
+    """Never traverse managed subfolders, symlinks, or junctions."""
+    return [p for p in root.iterdir() if p.is_file() and not is_protected(p, root)]
+
+
+
 
 @dataclass
 class Action:
@@ -272,7 +344,7 @@ def find_duplicate_groups(
     Returns groups of duplicate files (each group length >= 2),
     based on SHA-256 hash, after grouping by file size.
     """
-    it = root.rglob("*") if include_subfolders else root.glob("*")
+    it = safe_candidates(root)
 
     size_map: Dict[int, List[Path]] = {}
     for p in it:
@@ -356,8 +428,7 @@ def build_plan(
     plan: List[Tuple[Path, Path, str]] = []
     cutoff = datetime.now() - timedelta(days=days_to_archive)
 
-    it = root.rglob("*") if include_subfolders else root.glob("*")
-    files = [p for p in it if p.is_file() and JOURNAL_DIRNAME not in p.parts]
+    files = safe_candidates(root)
 
     total = len(files)
     show_progress = total >= 2000  # only show for big scans
@@ -400,6 +471,8 @@ def execute_plan(plan: List[Tuple[Path, Path, str]]) -> List[Action]:
     show_progress = total >= 2000
 
     for i, (src, dst, reason) in enumerate(plan, start=1):
+        if is_protected(src, src.parent) or dst.is_symlink():
+            continue
         if show_progress and (i % 50 == 0 or i == total):
             progress_print(i, total, "Moving")
         ensure_dir(dst.parent)
@@ -414,7 +487,7 @@ def execute_plan(plan: List[Tuple[Path, Path, str]]) -> List[Action]:
 
 
 def execute_dupes_move(groups: List[List[Path]], keep: str, dup_dir: Path) -> List[Action]:
-    ensure_dir(dup_dir)
+    raise RuntimeError("Safe Mode: moving duplicate files is disabled; report only.")
     actions: List[Action] = []
     total_groups = len(groups)
     show_progress = total_groups >= 2000
@@ -554,7 +627,7 @@ def _wizard_organize(root: Path) -> None:
         typer.echo(f"- MOVE  {src}  ->  {dst}   ({reason})")
     if len(plan) > 20:
         typer.echo(f"... and {len(plan) - 20} more.")
-    if not typer.confirm("Proceed?", default=True):
+    if not typer.confirm("Proceed?", default=False):
         typer.echo("Skipped organizing.")
         return
 
@@ -579,6 +652,8 @@ def _wizard_dedupe(root: Path) -> None:
         f"\nFound {extra_files} duplicate file(s) across {len(groups)} group(s) "
         f"-- moving the extras could free up {bytes_to_human(reclaimable)}."
     )
+    typer.echo("Safe Mode: duplicate files are report-only; none will be moved.")
+    return
     keep = _wizard_prompt_choice(
         "Which copy should be kept in each group?",
         [("newest", "Keep the newest copy"), ("oldest", "Keep the oldest copy"), ("first", "Keep whichever comes first")],
@@ -595,6 +670,7 @@ def _wizard_dedupe(root: Path) -> None:
 
 def run_wizard() -> None:
     typer.echo(f"{APP_NAME} {APP_VERSION} -- interactive mode")
+    typer.echo("Safe Mode ON: only allowlisted top-level documents/images may be organized. Subfolders, mods, installers, archives and duplicates are protected.")
     typer.echo("No commands needed here -- just answer the prompts. Nothing changes until you say so.")
 
     try:
@@ -722,6 +798,7 @@ def apply(
         raise typer.Exit()
 
     if not yes:
+        typer.echo(f"Safe Mode ON: protected files, subfolders and archives are excluded.")
         typer.echo(f"About to move {len(plan)} file(s) under {root}")
         for src, dst, reason in plan[:20]:
             typer.echo(f"- MOVE  {src}  ->  {dst}   ({reason})")
@@ -755,6 +832,9 @@ def dupes(
     Use --move to move extra copies into Duplicates/ (keeps one per group).
     """
     root = path.expanduser().resolve()
+    if move:
+        typer.secho("Safe Mode: --move is disabled for duplicate files.", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
     groups = find_duplicate_groups(root, include_subfolders, min_size_kb)
 
     if not groups:
@@ -820,6 +900,8 @@ def undo(
     journal = journal.expanduser().resolve()
     actions = read_journal(journal)
     move_actions = [a for a in actions if a.kind == "move" and a.dst]
+    typer.echo("Safe Mode: undo is disabled until protected-path validation is implemented.")
+    raise typer.Exit(code=2)
 
     if not yes:
         typer.echo(f"About to reverse {len(move_actions)} move(s) recorded in {journal.name}")
