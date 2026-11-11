@@ -1,0 +1,34 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+
+# =========================
+# Virtual environments
+# =========================
+.venv/
+venv/
+
+# =========================
+# PyInstaller
+# =========================
+build/
+dist/
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Optional local files
+# =========================
+.env
+
+# Release artifacts
+ReconFile-*.zip
+ReconFile-*.exe
+*.sha256
+release/

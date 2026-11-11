@@ -1,0 +1,8 @@
+{
+  "Screenshots": [".png"],
+  "Images": [".jpg", ".jpeg", ".gif", ".webp", ".heic", ".svg"],
+  "Videos": [".mp4", ".mov", ".mkv", ".webm"],
+  "Docs": [".pdf", ".doc", ".docx", ".txt", ".md"],
+  "Spreadsheets": [".xls", ".xlsx", ".csv"],
+  "Code": [".py", ".js", ".ts", ".json", ".yml"]
+}
