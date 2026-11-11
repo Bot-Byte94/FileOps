@@ -323,7 +323,7 @@ def test_write_journal_never_collides(tmp_path):
 def test_cli_version():
     result = runner.invoke(fileops.app, ["--version"])
     assert result.exit_code == 0
-    assert "ReconFile" in result.output
+    assert "FileOps 0.3.6" in result.output
 
 
 def test_cli_categories_shows_default_scheme():
