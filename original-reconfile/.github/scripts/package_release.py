@@ -32,6 +32,8 @@ def write_checksum(path: Path) -> None:
 def main() -> None:
     ref_name = os.environ.get("GITHUB_REF_NAME", "0.0.0-dev")
     version = ref_name[1:] if ref_name.startswith("v") else ref_name
+    # Pull request refs such as "1/merge" must not become path separators.
+    version = "".join(c if c.isalnum() or c in ".-_" else "-" for c in version)
 
     os_name = os.environ.get("RUNNER_OS") or platform.system()
     is_windows = os_name == "Windows"
