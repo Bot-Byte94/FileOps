@@ -104,6 +104,44 @@ PROTECTED_DIR_NAMES = frozenset({
 })
 PROTECTED_CONFIG = Path.home() / ".fileops-protected-folders.txt"
 
+# Evidence-based protection for loose files beside an executable.
+# We cannot discover arbitrary runtime dependencies or currently open files.
+APPLICATION_EXTENSIONS = frozenset({
+    ".exe", ".com", ".bat", ".cmd", ".msi", ".jar", ".appimage",
+    ".dll", ".so", ".dylib",
+})
+APPLICATION_MARKERS = frozenset({
+    "manifest.json", "package.json", "appmanifest.acf", "modrinth.index.json",
+    "instance.cfg", "minecraftinstance.json", "modlist.html",
+})
+
+
+def application_related_files(root: Path) -> set[str]:
+    """Protect sidecars sharing an executable's exact basename, case-insensitively.
+
+    This is intentionally narrow: a similarly themed picture in Downloads is
+    not assumed to be a game dependency. Unknown dynamic references remain
+    undetectable, so Safe Mode still excludes nested files and non-allowlisted
+    formats.
+    """
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return set()
+    if any(p.is_file() and p.name.casefold() in APPLICATION_MARKERS for p in entries):
+        # Treat a directory with a known app/mod manifest as managed.
+        return {p.name.casefold() for p in entries}
+    app_stems = {
+        p.stem.casefold() for p in entries
+        if p.is_file() and p.suffix.casefold() in APPLICATION_EXTENSIONS
+    }
+    return {
+        p.name.casefold() for p in entries
+        if p.is_file() and p.stem.casefold() in app_stems
+    }
+
+
+
 
 def protected_folders() -> List[Path]:
     """One absolute protected directory per line, '#' comments permitted."""
@@ -123,7 +161,7 @@ def protected_folders() -> List[Path]:
     return folders
 
 
-def is_protected(path: Path, root: Path) -> bool:
+def is_protected(path: Path, root: Path, app_related: Optional[set[str]] = None) -> bool:
     """Fail closed for nested files, links, protected paths and non-allowlisted types."""
     if path.is_symlink() or root.is_symlink():
         return True
@@ -137,6 +175,8 @@ def is_protected(path: Path, root: Path) -> bool:
         return True
     if any(part.lower() in PROTECTED_DIR_NAMES for part in path.parts):
         return True
+    if path.name.casefold() in (app_related if app_related is not None else application_related_files(root)):
+        return True
     if path.suffix.lower() in PROTECTED_EXTENSIONS:
         return True
     if path.suffix.lower() not in SAFE_EXTENSIONS:
@@ -149,7 +189,8 @@ def is_protected(path: Path, root: Path) -> bool:
 
 def safe_candidates(root: Path) -> List[Path]:
     """Never traverse managed subfolders, symlinks, or junctions."""
-    return [p for p in root.iterdir() if p.is_file() and not is_protected(p, root)]
+    related = application_related_files(root)
+    return [p for p in root.iterdir() if p.is_file() and not is_protected(p, root, related)]
 
 
 

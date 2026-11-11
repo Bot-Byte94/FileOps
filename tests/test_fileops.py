@@ -57,3 +57,20 @@ def test_custom_protected_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(fileops, "PROTECTED_CONFIG", config)
     (tmp_path / "note.txt").write_text("hello")
     assert fileops.safe_candidates(tmp_path) == []
+
+def test_executable_sidecar_is_protected(tmp_path):
+    (tmp_path / "game.exe").write_text("placeholder")
+    (tmp_path / "game.png").write_text("asset")
+    (tmp_path / "holiday.png").write_text("personal photo")
+    names = {p.name for p in fileops.safe_candidates(tmp_path)}
+    assert "game.png" not in names
+    assert "holiday.png" in names
+
+def test_manifest_protects_managed_directory(tmp_path):
+    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "asset.png").write_text("asset")
+    assert fileops.safe_candidates(tmp_path) == []
+
+def test_loose_game_artwork_without_dependency_evidence_is_eligible(tmp_path):
+    (tmp_path / "sprite.png").write_text("personal artwork")
+    assert [p.name for p in fileops.safe_candidates(tmp_path)] == ["sprite.png"]
